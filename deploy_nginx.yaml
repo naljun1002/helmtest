@@ -110,28 +110,6 @@ spec:
         - name: web-siteconf
           persistentVolumeClaim:
             claimName: mpower-web-siteconf
-status: {}
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: webserver
-  namespace: default
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: webserver
-  minReplicas: 1
-  maxReplicas: 3
-  metrics:
-  - resource:
-      name: cpu
-      target:
-        averageUtilization: 60
-        type: Utilization
-    type: Resource  
-  
 ---
 apiVersion: v1
 kind: Service
