@@ -1,128 +1,63 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: argoproj.io/v1alpha1 # apps/v1 대신 argoproj.io/v1alpha1를 사용한다.
+kind: Rollout # Deployment 대신 Rollout을 사용한다.
+# ==== 이 아래의 내용은 기존 Deployment와 동일하게 작성한다. ====
 metadata:
-  name: mpower-web-mpvroot
+  name: rollout-bluegreen
 spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 100Gi
-  storageClassName: "managed-nfs-storage"
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mpower-web-siteconf
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 100Mi
-  storageClassName: "managed-nfs-storage"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: webserver
-  name: webserver
-spec:
-  replicas: 5
+  replicas: 2
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
-      app: webserver
-  strategy:
-    type: Recreate
+      app: rollout-bluegreen
   template:
     metadata:
       labels:
-        app: webserver
+        app: rollout-bluegreen
     spec:
-      hostAliases:
-        - ip: "10.10.18.10"
-          hostnames:
-          - "win-8tj9gnmsmhe"
       containers:
-        - command: ["/usr/local/bin/webserver-entrypoint.sh"]
-          args:
-            - httpd
-            #- none
-          env:
-            - name: DB_CONTAINER_NAME
-              value: acustomer-mpowerdb-headless
-            - name: DB_KIND
-              value: __MYSQL
-            - name: DB_PORT
-              value: "3306"
-            - name: GLOBAL_VAL_NAME
-              value: rnd-main
-            - name: HOST_INDEX
-              value: _01
-            - name: INSTALL_APP_WEB
-              value: "10"
-            - name: SFTP_ADDR
-              value: "10.10.4.53"
-            - name: SFTP_PWD
-              value: "@mpower4119.!"
-            - name: SFTP_USER
-              value: "mpower"
-            - name: SVN_PWD
-              value: "svn@123"
-            - name: SVN_USER
-              value: "build"
-            - name: MPOWER_K8S
-              value: "1"
-          image: 10.10.4.59:5000/rnd/webserver:8_2.4.58_8.2.15_240215
-          name: webserver
-          ports:
-            - containerPort: 22
-            - containerPort: 80
-            - containerPort: 443
-          resources:
-            requests:
-              cpu: 100m
-          volumeMounts:
-            - name: web-mpvroot
-              mountPath: /data1
-            - name: web-siteconf
-              mountPath: /MOCOMSYS/site_props
-      initContainers:
-        - name: webserver-init
-          image: 10.10.4.59:5000/rnd/webserver:8_2.4.58_8.2.15_240215
-          command: ["sh", "-c"]
-          args:
-            - chown mpower:mpower /data1;
-              chown mpower:mpower /MOCOMSYS/site_props;
-          volumeMounts:
-            - name: web-mpvroot
-              mountPath: /data1
-            - name: web-siteconf
-              mountPath: /MOCOMSYS/site_props
-          securityContext:
-            runAsUser: 0
-      restartPolicy: Always
-      volumes:
-        - name: web-mpvroot
-          persistentVolumeClaim:
-            claimName: mpower-web-mpvroot
-        - name: web-siteconf
-          persistentVolumeClaim:
-            claimName: mpower-web-siteconf
+      - name: rollouts-demo
+        image: argoproj/rollouts-demo:blue
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+# ==== 이 위의 내용은 기존 Deployment와 동일하게 작성한다. ====
+  strategy:
+    blueGreen: 
+      # activeService는 Green이 Blue로 승격 시 새 템플릿 해시로 업데이트 할 Service를 지정한다.
+      # 이 필드는 blueGreen 업데이트 전략에 필수값이다.
+      activeService: rollout-bluegreen-active
+      # previewService는 Green이 Blue로 승격 되기 전에 새 템플릿 해시로 업데이트 할 Service를 지정한다.
+      # 이를 통해 프로덕션 트래픽을 제공하지 않고 미리보기 스택을 통해 테스트 해볼 수 있다.
+      # 이 필드는 선택 사항이다.
+      previewService: rollout-bluegreen-preview
+      # autoPromotionEnabled는 승격 직전에 롤아웃을 일시 중지하여 새 스택의 승격을 자동으로 비활성화한다.
+      # 이 옵션을 생략하면 기본 동작은 ReplicaSet이 완전히 준비/사용 가능한 즉시 새 스택을 승격시킨다.
+      # 이 옵션을 true로 설정 한다면, 다음 명령어를 사용하여 롤아웃을 재개 할 수 있다.
+      # `kubectl argo rollouts resume ROLLOUT`
+      autoPromotionEnabled: false
+
 ---
-apiVersion: v1
 kind: Service
+apiVersion: v1
 metadata:
-  name: webserver-headless
-  labels:
-    app: webserver-headless
+  name: rollout-bluegreen-active
 spec:
-  ports:
-  - name: http
-    port: 80
-  - name: https
-    port: 443
-  clusterIP: None
   selector:
-    app: webserver
+    app: rollout-bluegreen
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: rollout-bluegreen-preview
+spec:
+  selector:
+    app: rollout-bluegreen
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
