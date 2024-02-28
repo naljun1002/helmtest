@@ -40,10 +40,6 @@ spec:
       labels:
         app: webserver
     spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 50
       hostAliases:
         - ip: "10.10.18.10"
           hostnames:
